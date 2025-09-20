@@ -26,7 +26,7 @@ exports.sendNewMessageNotification = functions.firestore
       notification: {
         title: `${message.name} a envoyé un message`,
         body: message.text,
-        click_action: "https://TON_SITE_NETLIFY.netlify.app", // Remplace par ton URL Netlify
+        click_action: "https://poetic-puppy-0f54e4.netlify.app/", // Remplace par ton URL Netlify
       }
     };
 
