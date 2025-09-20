@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>WhatsApp Clone</title>
+  <style>
+    body, html {
+      margin: 0; padding: 0; height: 100%;
+      font-family: Arial, sans-serif;
+    }
+    #app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background-size: cover;
+    }
+    header {
+      background: #128C7E;
+      color: white;
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #authSection {
+      display: flex;
+      gap: 10px;
+    }
+    #authSection form {
+      display: flex;
+      gap: 5px;
+    }
+    #authSection input {
+      padding: 5px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .msg {
+      display: flex;
+      align-items: flex-start;
+      margin: 5px 0;
+      max-width: 70%;
+    }
+    .msg img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    .bubble {
+      padding: 8px;
+      border-radius: 8px;
+      word-wrap: break-word;
+      background: #ECECEC;
+    }
+    .me {
+      margin-left: auto;
+      flex-direction: row-reverse;
+    }
+    .me img {
+      margin-right: 0;
+      margin-left: 8px;
+    }
+    .me .bubble {
+      background: #DCF8C6;
+    }
+    .name {
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+    .time {
+      font-size: 10px;
+      color: gray;
+      text-align: right;
+      margin-top: 3px;
+    }
+    #messageForm {
+      display: flex;
+      padding: 10px;
+      border-top: 1px solid #ccc;
+    }
+    #messageForm input {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    #messageForm button {
+      margin-left: 5px;
+      padding: 8px 12px;
+      background: #25D366;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+    #bg-input {
+      padding: 5px;
+      width: 100%;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <span>WhatsApp Clone</span>
+      <div id="authSection">
+        <form id="loginForm">
+          <input type="email" id="loginEmail" placeholder="Email" required />
+          <input type="password" id="loginPassword" placeholder="Mot de passe" required />
+          <button type="submit">Connexion</button>
+        </form>
+        <form id="registerForm">
+          <input type="email" id="registerEmail" placeholder="Email" required />
+          <input type="password" id="registerPassword" placeholder="Mot de passe" required />
+          <input type="text" id="registerName" placeholder="Pseudo" required />
+          <input type="text" id="registerAvatar" placeholder="URL Avatar" />
+          <button type="submit">Créer un compte</button>
+        </form>
+        <button id="logoutBtn" style="display:none;">Déconnexion</button>
+      </div>
+    </header>
+
+    <div id="messages"></div>
+
+    <form id="messageForm" style="display:none;">
+      <input id="messageInput" type="text" placeholder="Écris un message..." />
+      <button type="submit">Envoyer</button>
+    </form>
+
+    <input id="bg-input" type="text" placeholder="URL du fond de discussion" />
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+    import { 
+      getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+    import { 
+      getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, getDoc 
+    } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+    // ✅ CONFIG FIREBASE
+    const firebaseConfig = {
+      apiKey: "AIzaSyAHVT3rSryUlakdEcEePfxwUC4_Jji3lT4",
+      authDomain: "tchatjnm.firebaseapp.com",
+      databaseURL: "https://tchatjnm-default-rtdb.firebaseio.com",
+      projectId: "tchatjnm",
+      storageBucket: "tchatjnm.firebasestorage.app",
+      messagingSenderId: "744229809225",
+      appId: "1:744229809225:web:959f6a51a7dc3da0b42398",
+      measurementId: "G-0DG9TXXR28"
+    };
+
+    // 🔥 Initialisation Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // 🔹 Références DOM
+    const messagesDiv = document.getElementById("messages");
+    const form = document.getElementById("messageForm");
+    const input = document.getElementById("messageInput");
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("registerForm");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const bgInput = document.getElementById("bg-input");
+    const appDiv = document.getElementById("app");
+
+    // 🔹 Fond par défaut
+    appDiv.style.backgroundImage = "url('https://www.toptal.com/designers/subtlepatterns/patterns/morocco.png')";
+    bgInput.addEventListener("change", () => {
+      appDiv.style.backgroundImage = `url(${bgInput.value})`;
+    });
+
+    let currentUser = null;
+    let currentProfile = null; // Contiendra pseudo + avatar
+
+    // 🔹 Inscription
+    registerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("registerEmail").value;
+      const password = document.getElementById("registerPassword").value;
+      const name = document.getElementById("registerName").value;
+      const avatar = document.getElementById("registerAvatar").value || "https://via.placeholder.com/32";
+
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        const uid = userCred.user.uid;
+        // Sauvegarde profil utilisateur
+        await setDoc(doc(db, "users", uid), {
+          uid,
+          email,
+          name,
+          avatar
+        });
+        alert("✅ Compte créé !");
+      } catch (err) {
+        alert("Erreur création compte : " + err.message);
+      }
+    });
+
+    // 🔹 Connexion
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("loginEmail").value;
+      const password = document.getElementById("loginPassword").value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        alert("Erreur connexion : " + err.message);
+      }
+    });
+
+    // 🔹 Déconnexion
+    logoutBtn.addEventListener("click", () => {
+      signOut(auth);
+    });
+
+    // 🔹 Gestion état connexion
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        currentUser = user;
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        currentProfile = userDoc.exists() ? userDoc.data() : { name: user.email.split("@")[0], avatar: "https://via.placeholder.com/32" };
+
+        loginForm.style.display = "none";
+        registerForm.style.display = "none";
+        logoutBtn.style.display = "inline-block";
+        form.style.display = "flex";
+        loadMessages();
+      } else {
+        currentUser = null;
+        currentProfile = null;
+        loginForm.style.display = "flex";
+        registerForm.style.display = "flex";
+        logoutBtn.style.display = "none";
+        form.style.display = "none";
+        messagesDiv.innerHTML = "<p style='text-align:center;'>Connecte-toi pour discuter</p>";
+      }
+    });
+
+    // 🔹 Chargement messages
+    function loadMessages() {
+      const q = query(collection(db, "messages"), orderBy("createdAt"));
+      onSnapshot(q, (snapshot) => {
+        messagesDiv.innerHTML = "";
+        snapshot.forEach((doc) => {
+          const msg = doc.data();
+          const wrapper = document.createElement("div");
+          wrapper.className = "msg " + (msg.uid === currentUser?.uid ? "me" : "other");
+
+          const avatar = document.createElement("img");
+          avatar.src = msg.avatar || "https://via.placeholder.com/32";
+
+          const bubble = document.createElement("div");
+          bubble.className = "bubble";
+
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = msg.name || msg.email || "Utilisateur";
+
+          const text = document.createElement("div");
+          text.textContent = msg.text;
+
+          const time = document.createElement("div");
+          time.className = "time";
+          if (msg.createdAt?.seconds) {
+            const date = new Date(msg.createdAt.seconds * 1000);
+            time.textContent = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          }
+
+          bubble.appendChild(name);
+          bubble.appendChild(text);
+          bubble.appendChild(time);
+
+          wrapper.appendChild(avatar);
+          wrapper.appendChild(bubble);
+
+          messagesDiv.appendChild(wrapper);
+        });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      });
+    }
+
+    // 🔹 Envoi message
+    async function sendMessage() {
+      if (!input.value.trim() || !currentUser || !currentProfile) return;
+      await addDoc(collection(db, "messages"), {
+        text: input.value,
+        uid: currentUser.uid,
+        email: currentUser.email,
+        name: currentProfile.name,
+        avatar: currentProfile.avatar,
+        createdAt: serverTimestamp(),
+      });
+      input.value = "";
+    }
+
+    // 🔹 Envoi avec bouton
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      sendMessage();
+    });
+
+    // 🔹 Envoi avec Entrée (Shift+Entrée = retour ligne)
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
